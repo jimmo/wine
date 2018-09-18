@@ -1730,6 +1730,22 @@ static inline void LISTVIEW_InvalidateRect(const LISTVIEW_INFO *infoPtr, const R
     InvalidateRect(infoPtr->hwndSelf, rect, TRUE);
 }
 
+static inline void LISTVIEW_InvalidateSubItem(const LISTVIEW_INFO *infoPtr, INT nItem, INT nSubItem)
+{
+    POINT Origin, Position;
+    RECT rcBox;
+
+    if(!is_redrawing(infoPtr)) return; 
+    assert (infoPtr->uView == LV_VIEW_DETAILS);
+    LISTVIEW_GetOrigin(infoPtr, &Origin);
+    LISTVIEW_GetItemOrigin(infoPtr, nItem, &Position);
+    LISTVIEW_GetHeaderRect(infoPtr, nSubItem, &rcBox);
+    rcBox.top = 0;
+    rcBox.bottom = infoPtr->nItemHeight;
+    OffsetRect(&rcBox, Origin.x, Origin.y + Position.y);
+    LISTVIEW_InvalidateRect(infoPtr, &rcBox);
+}
+
 static inline void LISTVIEW_InvalidateItem(const LISTVIEW_INFO *infoPtr, INT nItem)
 {
     RECT rcBox;
@@ -1739,22 +1755,14 @@ static inline void LISTVIEW_InvalidateItem(const LISTVIEW_INFO *infoPtr, INT nIt
 
     LISTVIEW_GetItemBox(infoPtr, nItem, &rcBox);
     LISTVIEW_InvalidateRect(infoPtr, &rcBox);
-}
 
-static inline void LISTVIEW_InvalidateSubItem(const LISTVIEW_INFO *infoPtr, INT nItem, INT nSubItem)
-{
-    POINT Origin, Position;
-    RECT rcBox;
-    
-    if(!is_redrawing(infoPtr)) return; 
-    assert (infoPtr->uView == LV_VIEW_DETAILS);
-    LISTVIEW_GetOrigin(infoPtr, &Origin);
-    LISTVIEW_GetItemOrigin(infoPtr, nItem, &Position);
-    LISTVIEW_GetHeaderRect(infoPtr, nSubItem, &rcBox);
-    rcBox.top = 0;
-    rcBox.bottom = infoPtr->nItemHeight;
-    OffsetRect(&rcBox, Origin.x + Position.x, Origin.y + Position.y);
-    LISTVIEW_InvalidateRect(infoPtr, &rcBox);
+    /* Additionally invalidate all other sub-items.
+       The first sub-item is handled by GetItemBox above. */
+    if (infoPtr->uView == LV_VIEW_DETAILS) {
+        INT nSubItem;
+	for (nSubItem = 1; nSubItem < DPA_GetPtrCount(infoPtr->hdpaColumns); nSubItem++)
+            LISTVIEW_InvalidateSubItem(infoPtr, nItem, nSubItem);
+    }
 }
 
 static inline void LISTVIEW_InvalidateList(const LISTVIEW_INFO *infoPtr)
@@ -7741,8 +7749,9 @@ static INT LISTVIEW_HitTest(const LISTVIEW_INFO *infoPtr, LPLVHITTESTINFO lpht, 
         UnionRect(&rcBounds, &rcIcon, &rcLabel);
         UnionRect(&rcBounds, &rcBounds, &rcState);
     }
+
     TRACE("rcBounds=%s\n", wine_dbgstr_rect(&rcBounds));
-    if (!PtInRect(&rcBounds, opt)) return -1;
+    if (select && !PtInRect(&rcBounds, opt)) return -1;
 
     /* That's a special case - row rectangle is used as item rectangle and
        returned flags contain all item parts. */
