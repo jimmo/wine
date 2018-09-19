@@ -7723,7 +7723,18 @@ static INT LISTVIEW_HitTest(const LISTVIEW_INFO *infoPtr, LPLVHITTESTINFO lpht, 
 
     LISTVIEW_GetItemMetrics(infoPtr, &lvItem, &rcBox, NULL, &rcIcon, &rcState, &rcLabel);
     LISTVIEW_GetItemOrigin(infoPtr, iItem, &Position);
+
+    TRACE("rcBox=%s\n", wine_dbgstr_rect(&rcBox));
+    TRACE("rcIcon=%s\n", wine_dbgstr_rect(&rcIcon));
+    TRACE("rcState=%s\n", wine_dbgstr_rect(&rcState));
+    TRACE("rcLabel=%s\n", wine_dbgstr_rect(&rcLabel));
+    TRACE("Origin=%s\n", wine_dbgstr_point(&Origin));
+    TRACE("Position=%s\n", wine_dbgstr_point(&Position));
+
+    TRACE("opt1=%s\n", wine_dbgstr_point(&opt));
+    
     opt.x = lpht->pt.x - Position.x - Origin.x;
+    TRACE("opt2=%s\n", wine_dbgstr_point(&opt));
 
     if (lpht->pt.y < infoPtr->rcList.top && lpht->pt.y >= 0)
 	opt.y = lpht->pt.y - Position.y - Origin.y + infoPtr->rcList.top;
@@ -7742,6 +7753,7 @@ static INT LISTVIEW_HitTest(const LISTVIEW_INFO *infoPtr, LPLVHITTESTINFO lpht, 
         UnionRect(&rcBounds, &rcBounds, &rcState);
     }
     TRACE("rcBounds=%s\n", wine_dbgstr_rect(&rcBounds));
+    TRACE("opt3=%s\n", wine_dbgstr_point(&opt));
     if (!PtInRect(&rcBounds, opt)) return -1;
 
     /* That's a special case - row rectangle is used as item rectangle and
