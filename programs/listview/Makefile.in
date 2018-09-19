@@ -1,0 +1,10 @@
+MODULE    = listview.exe
+APPMODE   = -mwindows -mno-cygwin
+IMPORTS   = comctl32 user32 gdi32 advapi32
+
+C_SRCS = \
+	main.c
+
+RC_SRCS = listview.rc
+
+INSTALL_LIB = listview.exe $(wine64_disable)listview
