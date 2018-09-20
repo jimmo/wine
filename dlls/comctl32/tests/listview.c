@@ -3856,6 +3856,216 @@ static void test_hittest(void)
     DestroyWindow(hwnd);
 }
 
+static void test_hittest_ordering(void)
+{
+    HWND hwnd;
+    DWORD r;
+    RECT bounds;
+    LVITEMA item;
+    static CHAR text[] = "1234567890ABCDEFGHIJKLMNOPQRST";
+    static CHAR subtext[] = "sub";
+    POINT pos;
+    INT x, y;
+    INT ymid;
+    static INT subitem_column_order[] = {1, 0, 2};
+
+    hwnd = create_listview_control(LVS_REPORT);
+    ok(hwnd != NULL, "failed to create a listview window\n");
+
+    /* LVS_REPORT with a two subitem (3 columns  [sub] [item] [sub]) */
+    insert_column(hwnd, 0);
+    insert_column(hwnd, 1);
+    insert_column(hwnd, 2);
+    insert_item(hwnd, 0);
+
+    /* Add item with two subitems */
+    item.iSubItem = 0;
+    item.pszText  = text;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    item.iSubItem = 1;
+    item.pszText  = subtext;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    item.iSubItem = 2;
+    item.pszText  = subtext;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+
+    /* Reorder columns to [1 sub] [0 item] [2 sub] */
+    SendMessageA(hwnd, LVM_SETCOLUMNORDERARRAY, sizeof(subitem_column_order) / sizeof(INT), (LPARAM)&subitem_column_order);
+
+    r = SendMessageA(hwnd, LVM_SETCOLUMNWIDTH, 0, MAKELPARAM(100, 0));
+    expect(TRUE, r);
+    r = SendMessageA(hwnd, LVM_SETCOLUMNWIDTH, 1, MAKELPARAM(50, 0));
+    expect(TRUE, r);
+    r = SendMessageA(hwnd, LVM_SETCOLUMNWIDTH, 2, MAKELPARAM(50, 0));
+    expect(TRUE, r);
+
+    SetRect(&bounds, LVIR_BOUNDS, 0, 0, 0);
+    r = SendMessageA(hwnd, LVM_GETITEMRECT, 0, (LPARAM)&bounds);
+    expect(TRUE, r);
+    ok(bounds.right - bounds.left > 0, "Expected non zero item width\n");
+    ok(bounds.left == 0 && bounds.right == 200,
+       "Expected item rect to span all three columns, got %s\n", wine_dbgstr_rect(&bounds));
+    r = SendMessageA(hwnd, LVM_GETITEMPOSITION, 0, (LPARAM)&pos);
+    expect(TRUE, r);
+    ok(pos.x == bounds.left + 50 + 2 && pos.y == bounds.top,
+       "Expected item pos to be just the center column, got %d,%d\n", pos.x, pos.y);
+
+    ymid = pos.y + (bounds.bottom - bounds.top) / 2;
+
+    /* inside item label */
+    x = pos.x + 20;
+    y = ymid;
+    test_lvm_hittest(hwnd, x, y, 0, LVHT_ONITEMLABEL, 0, FALSE, FALSE);
+    test_lvm_subitemhittest(hwnd, x, y, 0, 0, LVHT_ONITEMLABEL, FALSE, FALSE, FALSE);
+
+    /* left-hand subitem. Fails HITTEST, but succeeds SUBITEMHITTEST */
+    x = 10;
+    y = ymid;
+    test_lvm_hittest(hwnd, x, y, -1, LVHT_NOWHERE, 0, FALSE, FALSE);
+    test_lvm_subitemhittest(hwnd, x, y, 0, 1, LVHT_ONITEMLABEL, TRUE, FALSE, TRUE);
+
+    /* right-hand subitem. Same. */
+    x = 160;
+    y = ymid;
+    test_lvm_hittest(hwnd, x, y, -1, LVHT_TORIGHT, 0, FALSE, FALSE);
+    test_lvm_subitemhittest(hwnd, x, y, 0, 2, LVHT_ONITEMLABEL, TRUE, FALSE, TRUE);
+
+    DestroyWindow(hwnd);
+}
+
+static void test_item_invalidate(void) {
+    HWND hwnd;
+    DWORD r;
+    LVITEMA item;
+    /* These strings are wide enough to fill their columns. */
+    static CHAR text[] = "item 1234567890ABCDEFGHIJKLMNOPQRST";
+    static CHAR subtext[] = "sub 1234567890ABCDEFGHIJKLMNOPQRST";
+    static CHAR text2[] = "updated 1234567890ABCDEFGHIJKLMNOPQRST";
+    static CHAR subtext2[] = "changed 1234567890ABCDEFGHIJKLMNOPQRST";
+    RECT rect, bounds;
+    POINT pos;
+    INT xmid, ymid;
+    static INT subitem_column_order[] = {1, 0, 2};
+
+    hwnd = create_listview_control(LVS_REPORT);
+    ok(hwnd != NULL, "failed to create a listview window\n");
+
+    /* LVS_REPORT with a two subitem (three columns) */
+    insert_column(hwnd, 0);
+    insert_column(hwnd, 1);
+    insert_column(hwnd, 1);
+    insert_item(hwnd, 0);
+
+    /* Add item with two subitems */
+    item.iItem = 0;
+    item.iSubItem = 0;
+    item.pszText  = text;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    item.iSubItem = 1;
+    item.pszText  = subtext;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    item.iSubItem = 2;
+    item.pszText  = subtext;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+
+    /* Window is 100 wide so work inside that or the updates will be clipped. */
+    r = SendMessageA(hwnd, LVM_SETCOLUMNWIDTH, 0, MAKELPARAM(50, 0));
+    expect(TRUE, r);
+    r = SendMessageA(hwnd, LVM_SETCOLUMNWIDTH, 1, MAKELPARAM(25, 0));
+    expect(TRUE, r);
+    r = SendMessageA(hwnd, LVM_SETCOLUMNWIDTH, 2, MAKELPARAM(25, 0));
+    expect(TRUE, r);
+
+    /* Flush pending updates. */
+    UpdateWindow(hwnd);    
+    GetUpdateRect(hwnd, &rect, FALSE);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == 0 && rect.bottom == 0,
+       "Expected empty update rect, got %s\n", wine_dbgstr_rect(&rect));
+    
+    SetRect(&bounds, LVIR_BOUNDS, 0, 0, 0);
+    r = SendMessageA(hwnd, LVM_GETITEMRECT, 0, (LPARAM)&bounds);
+    expect(TRUE, r);
+    r = SendMessageA(hwnd, LVM_GETITEMPOSITION, 0, (LPARAM)&pos);
+    expect(TRUE, r);
+    
+    ymid = pos.y + (bounds.bottom - bounds.top) / 2;
+
+    /* Invalidate the main item. */
+    item.iSubItem = 0;
+    item.pszText = text2;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);    
+    GetUpdateRect(hwnd, &rect, FALSE);
+    xmid = 25;
+    ok(rect.left < xmid && rect.top < ymid && rect.right > xmid && rect.bottom > ymid,
+       "Expected update rect over item bounds, got %s\n", wine_dbgstr_rect(&rect));
+    UpdateWindow(hwnd);
+    
+    /* Invalidate the first sub item. */
+    item.iSubItem = 1;
+    item.pszText = subtext2;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    GetUpdateRect(hwnd, &rect, FALSE);
+    xmid = 60;
+    ok(rect.left < xmid && rect.top < ymid && rect.right > xmid && rect.bottom > ymid,
+       "Expected update rect over subitem 1 bounds, got %s\n", wine_dbgstr_rect(&rect));
+    UpdateWindow(hwnd);
+    
+    /* Invalidate the second sub item. */
+    item.iSubItem = 2;
+    item.pszText = subtext2;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    GetUpdateRect(hwnd, &rect, FALSE);
+    xmid = 80;
+    ok(rect.left < xmid && rect.top < ymid && rect.right > xmid && rect.bottom > ymid,
+       "Expected update rect over subitem 2 bounds, got %s\n", wine_dbgstr_rect(&rect));
+    UpdateWindow(hwnd);
+    
+    /* Reorder columns to [1 sub] [0 item] [2 sub] */
+    SendMessageA(hwnd, LVM_SETCOLUMNORDERARRAY, sizeof(subitem_column_order) / sizeof(INT), (LPARAM)&subitem_column_order);
+
+    /* Invalidate the main item. */
+    item.iSubItem = 0;
+    item.pszText = text;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);    
+    GetUpdateRect(hwnd, &rect, FALSE);
+    xmid = 50;
+    ok(rect.left < xmid && rect.top < ymid && rect.right > xmid && rect.bottom > ymid,
+       "Expected update rect over reordered item bounds, got %s\n", wine_dbgstr_rect(&rect));
+    UpdateWindow(hwnd);
+    
+    /* Invalidate the left sub item. */
+    item.iSubItem = 1;
+    item.pszText = subtext;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    GetUpdateRect(hwnd, &rect, FALSE);
+    xmid = 10;
+    todo_wine ok(rect.left < xmid && rect.top < ymid && rect.right > xmid && rect.bottom > ymid,
+       "Expected update rect over reordered subitem 1 bounds, got %s\n", wine_dbgstr_rect(&rect));
+    UpdateWindow(hwnd);
+    
+    /* Invalidate the right sub item. */
+    item.iSubItem = 2;
+    item.pszText = subtext;
+    r = SendMessageA(hwnd, LVM_SETITEMTEXTA, 0, (LPARAM)&item);
+    expect(TRUE, r);
+    GetUpdateRect(hwnd, &rect, FALSE);
+    xmid = 90;
+    todo_wine ok(rect.left < xmid && rect.top < ymid && rect.right > xmid && rect.bottom > ymid,
+       "Expected update rect over reordered subitem 2 bounds, got %s\n", wine_dbgstr_rect(&rect));
+    UpdateWindow(hwnd);
+}
+
 static void test_getviewrect(void)
 {
     HWND hwnd;
@@ -6435,6 +6645,8 @@ START_TEST(listview)
     test_nosortheader();
     test_setredraw();
     test_hittest();
+    test_hittest_ordering();
+    test_item_invalidate();
     test_getviewrect();
     test_getitemposition();
     test_columnscreation();
